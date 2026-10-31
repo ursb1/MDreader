@@ -1,0 +1,47 @@
+plugins {
+    id 'com.android.application'
+}
+
+def hasKeystore = project.hasProperty('ksFile')
+
+android {
+    namespace 'com.mdreader'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.mdreader'
+        minSdk 25
+        targetSdk 34
+        versionCode 1
+        versionName '1.0'
+    }
+
+    signingConfigs {
+        if (hasKeystore) {
+            release {
+                storeFile file(project.property('ksFile'))
+                storePassword project.property('ksPass')
+                keyAlias project.property('ksAlias')
+                keyPassword project.property('ksKeyPass')
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            shrinkResources false
+            signingConfig hasKeystore ? signingConfigs.release : signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
+    }
+}
