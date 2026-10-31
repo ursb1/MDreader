@@ -3,7 +3,6 @@ package com.mdreader;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.content.res.Configuration;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
@@ -56,9 +55,7 @@ public class MainActivity extends Activity {
         s.setTextZoom(100);
         s.setCacheMode(WebSettings.LOAD_NO_CACHE);
 
-        boolean night = (getResources().getConfiguration().uiMode
-                & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
-        web.setBackgroundColor(night ? 0xFF0C0F13 : 0xFFF6F7F9);
+        web.setBackgroundColor(0xFF0C0F13);
 
         web.setWebViewClient(new WebViewClient() {
             @Override

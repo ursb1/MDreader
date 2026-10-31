@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-theme="light">
+<html lang="zh-CN" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -8,6 +8,7 @@
 <style>/*__KATEX_CSS__*/</style>
 <style>
 :root{
+  color-scheme:light;
   --bg:#f6f7f9; --surface:#ffffff; --bar:rgba(246,247,249,.88);
   --text:#15171c; --muted:#606a7b; --border:rgba(15,20,32,.11);
   --accent:#3b6bff; --accent-soft:rgba(59,107,255,.10);
@@ -15,6 +16,7 @@
   --fs:17px; --lh:1.85; --maxw:44em; --mono:ui-monospace,"Cascadia Mono","DejaVu Sans Mono",Consolas,"Noto Sans Mono CJK SC",monospace;
 }
 html[data-theme="dark"]{
+  color-scheme:dark;
   --bg:#0c0f13; --surface:#141920; --bar:rgba(12,15,19,.86);
   --text:#e6e9ef; --muted:#9aa5b6; --border:rgba(255,255,255,.10);
   --accent:#7aa2ff; --accent-soft:rgba(122,162,255,.15);
@@ -233,7 +235,7 @@ function sset(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
 
 /* ---------- 主题 ---------- */
 var mq = window.matchMedia('(prefers-color-scheme: dark)');
-var themeMode = sget('md.theme','auto');
+var themeMode = sget('md.theme','dark');
 function applyTheme(){
   var dark = themeMode==='dark' || (themeMode==='auto' && mq.matches);
   document.documentElement.setAttribute('data-theme', dark?'dark':'light');
