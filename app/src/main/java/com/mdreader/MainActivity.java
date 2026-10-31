@@ -2,6 +2,7 @@ package com.mdreader;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.res.Configuration;
 import android.database.Cursor;
 import android.net.Uri;
@@ -21,14 +22,17 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 
 /**
- * 极简 WebView 外壳：把打包进 assets 的单文件阅读器（mdreader.html）加载到
- * https://mdreader.local/ 这个虚拟源下，从而保证 localStorage 可用。
- * 无第三方依赖、无任何运行时权限。
+ * 纯阅读器外壳：不内置任何文档。
+ * 启动 → 页面 onReady() → 恢复上次的 SAF 文档（持久授权）→ 推送进 WebView。
+ * 阅读位置由页面按 "md.pos:<uri hash>" 记在 localStorage。
  */
 public class MainActivity extends Activity {
 
     private static final String BASE_URL = "https://mdreader.local/";
     private static final int REQ_PICK = 1001;
+    private static final String PREFS = "mdreader";
+    private static final String K_URI = "last_uri";
+    private static final String K_NAME = "last_name";
 
     private WebView web;
 
@@ -84,6 +88,8 @@ public class MainActivity extends Activity {
                     Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
                     i.addCategory(Intent.CATEGORY_OPENABLE);
                     i.setType("*/*");
+                    i.putExtra(Intent.EXTRA_MIME_TYPES,
+                            new String[]{"text/markdown", "text/plain", "text/x-markdown", "application/octet-stream"});
                     try {
                         startActivityForResult(i, REQ_PICK);
                     } catch (Exception e) {
@@ -92,32 +98,115 @@ public class MainActivity extends Activity {
                 }
             });
         }
+
+        @JavascriptInterface
+        public void onReady() {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    restoreLast();
+                }
+            });
+        }
+    }
+
+    /* ---------- 恢复上次文档 ---------- */
+
+    private void restoreLast() {
+        final SharedPreferences p = getSharedPreferences(PREFS, MODE_PRIVATE);
+        final String uriStr = p.getString(K_URI, null);
+        if (uriStr == null) return;
+        final String name = p.getString(K_NAME, "文件");
+
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                String text = null;
+                try {
+                    text = readUri(Uri.parse(uriStr));
+                } catch (Exception ignored) {
+                }
+                final String t = text;
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (t == null) {
+                            p.edit().remove(K_URI).remove(K_NAME).apply();
+                            toast("上次的文件已无法访问，请重新选择");
+                            return;
+                        }
+                        push(t, name, Uri.parse(uriStr));
+                    }
+                });
+            }
+        }).start();
     }
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode != REQ_PICK || resultCode != RESULT_OK || data == null) return;
-        Uri uri = data.getData();
+        final Uri uri = data.getData();
         if (uri == null) return;
 
-        String name = displayName(uri);
+        try {
+            getContentResolver().takePersistableUriPermission(
+                    uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        } catch (Exception ignored) {
+        }
+
+        final String name = displayName(uri);
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                String text = null;
+                try {
+                    text = readUri(uri);
+                } catch (Exception ignored) {
+                }
+                final String t = text;
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (t == null) {
+                            toast("读取失败");
+                            return;
+                        }
+                        getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                                .putString(K_URI, uri.toString())
+                                .putString(K_NAME, name)
+                                .apply();
+                        push(t, name, uri);
+                    }
+                });
+            }
+        }).start();
+    }
+
+    /* ---------- 注入页面 ---------- */
+
+    private void push(String text, String label, Uri uri) {
+        String title = label.replaceAll("\\.(md|markdown|txt)$", "");
+        String key = "uri:" + Integer.toHexString(uri.toString().hashCode());
+        String js = "window.MDReader && window.MDReader.load("
+                + JSONObject.quote(text) + ","
+                + JSONObject.quote(title) + ","
+                + JSONObject.quote(key) + ")";
+        web.evaluateJavascript(js, null);
+    }
+
+    /* ---------- 工具 ---------- */
+
+    private String readUri(Uri uri) throws Exception {
         try (InputStream in = getContentResolver().openInputStream(uri)) {
             if (in == null) throw new IllegalStateException("stream");
             ByteArrayOutputStream bo = new ByteArrayOutputStream();
             byte[] buf = new byte[8192];
             int n;
             while ((n = in.read(buf)) > 0) bo.write(buf, 0, n);
-            String text = new String(bo.toByteArray(), "UTF-8");
-            String label = name.replaceAll("\\.(md|markdown|txt)$", "");
-            web.evaluateJavascript("window.MDReader && window.MDReader.load("
-                    + JSONObject.quote(text) + "," + JSONObject.quote(label) + ")", null);
-        } catch (Exception e) {
-            toast("读取失败：" + e.getMessage());
+            return new String(bo.toByteArray(), "UTF-8");
         }
     }
-
-    /* ---------- 工具 ---------- */
 
     private String displayName(Uri uri) {
         Cursor c = null;

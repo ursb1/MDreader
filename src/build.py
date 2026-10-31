@@ -43,26 +43,34 @@ def strip_script_close(js):
     return js.replace("</script", "<\\/script")
 
 
+def assemble(tpl, css, mdit, katex, doc):
+    doc_js = json.dumps(doc, ensure_ascii=False).replace("</", "<\\/")
+    out = tpl.replace("/*__KATEX_CSS__*/", css)
+    out = out.replace("/*__MDIT_JS__*/", mdit)
+    out = out.replace("/*__KATEX_JS__*/", katex)
+    out = out.replace("/*__DOC_JSON__*/", doc_js)
+    return out
+
+
 def main():
     tpl = read(os.path.join(SRC, "template.html"))
     css = inline_css(read(os.path.join(DEPS, "katex.min.css")))
     mdit = strip_script_close(read(os.path.join(DEPS, "markdown-it.min.js")))
     katex = strip_script_close(read(os.path.join(DEPS, "katex.min.js")))
     doc = read(os.path.join(ROOT, "test.md"))
-    doc_js = json.dumps(doc, ensure_ascii=False).replace("</", "<\\/")
 
-    out = tpl.replace("/*__KATEX_CSS__*/", css)
-    out = out.replace("/*__MDIT_JS__*/", mdit)
-    out = out.replace("/*__KATEX_JS__*/", katex)
-    out = out.replace("/*__DOC_JSON__*/", doc_js)
-
+    # 浏览器版：内置 test.md
+    out = assemble(tpl, css, mdit, katex, doc)
     with open(OUT, "w", encoding="utf-8", newline="\n") as f:
         f.write(out)
+    print("ok -> %s (%.2f MB)" % (OUT, os.path.getsize(OUT) / 1048576.0))
+
+    # APK 版：不内置任何文档，由原生层推送上次阅读的文件
+    asset = assemble(tpl, css, mdit, katex, "")
     os.makedirs(os.path.dirname(ASSET), exist_ok=True)
     with open(ASSET, "w", encoding="utf-8", newline="\n") as f:
-        f.write(out)
-    print("ok -> %s (%.2f MB)" % (OUT, os.path.getsize(OUT) / 1048576.0))
-    print("ok -> %s" % ASSET)
+        f.write(asset)
+    print("ok -> %s (empty doc)" % ASSET)
 
 
 if __name__ == "__main__":

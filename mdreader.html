@@ -165,6 +165,21 @@ main{padding:0 0 140px}
   opacity:0; pointer-events:none; transition:.25s ease; max-width:80vw; text-align:center;
 }
 #toast.show{opacity:1; transform:translate(-50%,0)}
+/* ---------- 空状态 ---------- */
+#empty{
+  min-height:70vh; display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:10px; padding:40px 28px; text-align:center; color:var(--muted);
+}
+#empty[hidden]{display:none}
+#empty svg{width:54px;height:54px;fill:none;stroke:var(--muted);stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;opacity:.7}
+#empty .empty-title{font-size:1.05em;font-weight:650;color:var(--text);margin-top:6px}
+#empty .empty-sub{font-size:.86em;max-width:22em;line-height:1.6}
+#empty button{
+  margin-top:14px; border:0; border-radius:12px; padding:11px 26px;
+  background:var(--accent); color:#fff; font-size:.94em; font-weight:600; font-family:inherit;
+  box-shadow:0 6px 18px var(--accent-soft); cursor:pointer;
+}
+#empty button:active{transform:scale(.97)}
 </style>
 </head>
 <body>
@@ -184,6 +199,12 @@ main{padding:0 0 140px}
   </button>
 </header>
 <main><article class="doc" id="doc"></article></main>
+<div id="empty" hidden>
+  <svg viewBox="0 0 24 24"><path d="M4 19h16a2 2 0 002-2v-7H4v7zM4 10V6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v2"/></svg>
+  <div class="empty-title">未打开文件</div>
+  <div class="empty-sub">选择 .md 文件，下次打开会自动回到这里</div>
+  <button id="empty-open">打开文件</button>
+</div>
 <nav id="toc"><div class="toc-head">目录</div><ol id="toc-list"></ol></nav>
 <div id="scrim"></div>
 <button id="top" aria-label="回到顶部"><svg viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
@@ -207,6 +228,7 @@ var scrim = document.getElementById('scrim');
 var topBtn = document.getElementById('top');
 var loading = document.getElementById('loading');
 var toastEl = document.getElementById('toast');
+var emptyEl = document.getElementById('empty');
 
 /* ---------- 存储 ---------- */
 function sget(k,d){ try{ var v=localStorage.getItem(k); return v===null?d:v; }catch(e){ return d; } }
@@ -255,6 +277,7 @@ function mathInline(state, silent){
   var start = state.pos+1, pos = start, max = state.posMax, found = -1;
   while(pos < max){
     var c = state.src.charCodeAt(pos);
+    if(c === 0x0A) break;                     /* 行内公式不跨行：断裂的源文件必须暴露为字面 $ */
     if(c === 0x5C){ pos += 2; continue; }
     if(c === 0x24){
       var nc = state.src.charCodeAt(pos+1);
@@ -313,21 +336,7 @@ md.renderer.rules.math_inline = mathInlineRender;
 md.block.ruler.before('fence','math_block', mathBlock, { alt:['paragraph','reference','blockquote','list'] });
 md.renderer.rules.math_block = mathBlockRender;
 
-/* ---------- 数据修复：源文件把 \ne 误写成"换行+e" ---------- */
-function hasOddDollar(s){ return (s.replace(/\$\$/g,'').split('$').length - 1) % 2 === 1; }
-function repairMathBreaks(text){
-  var lines = text.split(/\r?\n/), out = [], inFence = false;
-  for(var i=0;i<lines.length;i++){
-    var line = lines[i];
-    if(/^\s*```/.test(line)) inFence = !inFence;
-    if(!inFence && out.length && hasOddDollar(out[out.length-1]) && /^e\s/.test(line)){
-      out[out.length-1] += '\\n' + line;
-      continue;
-    }
-    out.push(line);
-  }
-  return out.join('\n');
-}
+/* 渲染严格遵循 CommonMark（markdown-it 默认行为），不对源文件做任何猜测性修复。 */
 
 /* ---------- 渲染文档 ---------- */
 var heads = [], posKey = 'md.pos:default', saveTimer = 0, tickScheduled = false;
@@ -356,7 +365,7 @@ function buildToc(){
 
 function render(text, key, label){
   posKey = 'md.pos:' + key;
-  var html = md.render(repairMathBreaks(text));
+  var html = md.render(text);
   doc.innerHTML = html;
   buildToc();
   var title = doc.querySelector('h1');
@@ -423,10 +432,12 @@ topBtn.addEventListener('click', function(){ window.scrollTo({ top:0, behavior:'
 
 /* ---------- 打开本地文件 ---------- */
 var picker = document.getElementById('picker');
-document.getElementById('btn-open').addEventListener('click', function(){
+function openFile(){
   if(window.AndroidHost && window.AndroidHost.pickFile){ window.AndroidHost.pickFile(); return; }
   picker.click();
-});
+}
+document.getElementById('btn-open').addEventListener('click', openFile);
+document.getElementById('empty-open').addEventListener('click', openFile);
 picker.addEventListener('change', function(){
   var f = picker.files && picker.files[0];
   if(!f) return;
@@ -450,6 +461,7 @@ function toast(msg){
 
 /* ---------- 启动 ---------- */
 function loadWithOverlay(text, key, label){
+  emptyEl.hidden = true;
   loading.classList.remove('hide');
   document.getElementById('loading-text').textContent = '正在排版…';
   setTimeout(function(){
@@ -457,12 +469,29 @@ function loadWithOverlay(text, key, label){
     finally{ setTimeout(function(){ loading.classList.add('hide'); }, 60); }
   }, 40);
 }
-loadWithOverlay(DOC_SRC, 'builtin', null);
+
+function showEmpty(){
+  doc.innerHTML = '';
+  tocList.innerHTML = '';
+  heads = [];
+  titleEl.textContent = '未打开文件';
+  document.title = 'MD 阅读器';
+  emptyEl.hidden = false;
+  loading.classList.add('hide');
+  progressEl.style.transform = 'scaleX(0)';
+}
+
+if(DOC_SRC && DOC_SRC.trim()) loadWithOverlay(DOC_SRC, 'builtin', null);
+else showEmpty();
 
 /* ---------- 供原生外壳调用 ---------- */
 window.MDReader = {
-  load: function(text, label){ loadWithOverlay(String(text), 'file:'+label, label); }
+  load: function(text, label, key){ loadWithOverlay(String(text), key || ('file:'+label), label); },
+  empty: showEmpty
 };
+if(window.AndroidHost && window.AndroidHost.onReady){
+  try{ window.AndroidHost.onReady(); }catch(e){}
+}
 })();
 </script>
 </body>

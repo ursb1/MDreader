@@ -4,7 +4,8 @@
 
 ## 产物
 
-- `mdreader.html`（约 0.82 MB）—— 完全自包含：markdown-it 14.1.0 + KaTeX 0.16.11（字体以 base64 内嵌），无任何网络请求。
+- `mdreader.html`（约 0.82 MB）—— 浏览器版，内置 `test.md` 作默认文档；完全自包含：markdown-it 14.1.0 + KaTeX 0.16.11（字体 base64 内嵌），零网络请求。
+- `app/src/main/assets/mdreader.html`（约 787 KB）—— APK 版，**不内置任何文档**（纯阅读器），由 `build.py` 自动生成。
 
 ## 设备端使用
 
@@ -20,37 +21,55 @@ file:///sdcard/Download/mdreader.html
 
 | 功能 | 说明 |
 |---|---|
-| 公式渲染 | KaTeX 0.16（CSS 排版，非 MathJax），775 个公式实例零报错 |
+| 公式渲染 | KaTeX 0.16（CSS 排版，非 MathJax），数千公式实例零报错 |
 | 目录 | 左上角按钮唤出侧边抽屉，按 h2/h3 生成，滚动时高亮当前章节 |
 | 字号 | 顶栏 `A-` / `A+`，14–27px，持久化 |
 | 主题 | 默认跟随系统深色，可循环切换 自动 → 浅色 → 深色 |
 | 进度 | 顶部进度条，按文档记忆滚动位置（localStorage，key `md.pos:<文档>`） |
-| 打开文件 | 右上角文件夹按钮，可选 `/sdcard` 上任意 `.md` |
+| 打开文件 | 右上角文件夹按钮或空状态按钮，可选设备上任意 `.md` |
+| 续读 | 打开 App 自动恢复上次的文件（SAF 持久授权）与该位置 |
 | 公式溢出 | 块级公式横向滚动，不截断 |
 
-## 源数据缺陷修复（重要）
+## 状态存储
 
-`test.md` 中存在 **24 处** `\ne`（≠）被错误转义为"换行 + `e`"的损坏，例如：
+| 内容 | 位置 |
+|---|---|
+| 上次文件 URI / 文件名 | APK：`SharedPreferences("mdreader")` 的 `last_uri` / `last_name` |
+| 每个文档的阅读位置 | 页面 localStorage：`md.pos:uri:<uri hash>` |
+| 字号 / 主题 | 页面 localStorage：`md.fs` / `md.theme` |
 
+浏览器版（`mdreader.html`）没有原生层，位置键为 `md.pos:builtin`，文件通过 `<input type=file>` 选择。
+
+## 渲染规范（严格 CommonMark）
+
+阅读器**不做任何猜测性修复**，源文件不合规就如实显示坏结果。行内公式额外约束：`$...$` 必须在同一行闭合（不跨软换行），否则原样输出 `$`。
+
+源文件必须满足：
+
+1. **代码围栏成对，且闭合围栏长度 ≥ 开启围栏**。````text 开启就必须 ```` 关闭；写成 ``` 关闭会导致此后全文被吞进代码块（表现为**侧栏目录为空、公式全部原样输出**）。
+2. 首行标题前不能有 `1. ` 之类的列表序号，否则 h1 退化成列表项。
+3. `\ne`（≠）不能写成"换行 + e"，否则行内公式断裂、显示为字面 `$`。
+4. 表格行不能跨行（单元格内不能有裸换行）。
+5. 行内 `$` 数量必须成对。
+
+自查工具：
+
+```bash
+python -I src/check_md.py <file.md>    # 报告奇数 $、断行表格、行尾反斜杠
 ```
-| 第一类间断点 | 跳跃间断点 | 左右极限均存在，但 $f(x_0^-)     ← 断行
-e f(x_0^+)$ | 图像断裂呈台阶状 ...
-```
 
-阅读器内置 `repairMathBreaks()`：当某行行内 `$` 未闭合且下一行以 `e ` 开头时，将两行以 `\ne` 重新拼接（代码块内不处理）。此修复仅作用于渲染，不改动源文件。
+当前已知不合规文件（需修源文件）：
+
+- `test.md` —— 24 处 `\ne` 断行，严格渲染下约 18 处显示为字面 `$`。
+- `模块03_连续性与闭区间函数性质_精读全书.md` —— 第 56 行 ````text 与第 71 行 ``` 不配对，整篇变代码块；首行 `1. # …`；另有 `\ne` 断行。
 
 ## 重新构建
 
 ```bash
-python -I src/build.py     # 读 .temp/deps + test.md，输出 mdreader.html
-python -I src/check_md.py test.md   # 扫描源文件结构缺陷（奇数 $、断行表格等）
+python -I src/build.py     # 读 .temp/deps + test.md，输出 mdreader.html 与 assets 副本
 ```
 
 依赖缓存：`.temp/deps`（markdown-it / katex.min.js / katex.min.css / fonts）。删除后需重新下载。
-
-## 后续（阶段二，未执行）
-
-打包为原生 APK（WebView 外壳、可选文件、沉浸式全屏）需要 Android SDK（约 250MB，10–30 分钟）。用户当前未授权下载，故未进行。
 
 ## APK 构建（GitHub Actions，本地无需 SDK）
 
@@ -93,4 +112,3 @@ adb install -r mdreader-<run>.apk
 ```
 
 若之前装过签名不同的版本，需先 `adb uninstall com.mdreader`。
-
