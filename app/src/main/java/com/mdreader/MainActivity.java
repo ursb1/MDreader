@@ -2,7 +2,6 @@ package com.mdreader;
 
 import android.app.Activity;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
@@ -21,17 +20,13 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 
 /**
- * 纯阅读器外壳：不内置任何文档。
- * 启动 → 页面 onReady() → 恢复上次的 SAF 文档（持久授权）→ 推送进 WebView。
- * 阅读位置由页面按 "md.pos:<uri hash>" 记在 localStorage。
+ * 纯阅读器外壳：不内置任何文档，启动后停在空态，由用户手动选择文件。
+ * 阅读位置由页面按 "md.pos:<uri hash>" 记在 localStorage；再次手动打开同一文件时才恢复。
  */
 public class MainActivity extends Activity {
 
     private static final String BASE_URL = "https://mdreader.local/";
     private static final int REQ_PICK = 1001;
-    private static final String PREFS = "mdreader";
-    private static final String K_URI = "last_uri";
-    private static final String K_NAME = "last_name";
 
     private WebView web;
 
@@ -95,48 +90,6 @@ public class MainActivity extends Activity {
                 }
             });
         }
-
-        @JavascriptInterface
-        public void onReady() {
-            runOnUiThread(new Runnable() {
-                @Override
-                public void run() {
-                    restoreLast();
-                }
-            });
-        }
-    }
-
-    /* ---------- 恢复上次文档 ---------- */
-
-    private void restoreLast() {
-        final SharedPreferences p = getSharedPreferences(PREFS, MODE_PRIVATE);
-        final String uriStr = p.getString(K_URI, null);
-        if (uriStr == null) return;
-        final String name = p.getString(K_NAME, "文件");
-
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                String text = null;
-                try {
-                    text = readUri(Uri.parse(uriStr));
-                } catch (Exception ignored) {
-                }
-                final String t = text;
-                runOnUiThread(new Runnable() {
-                    @Override
-                    public void run() {
-                        if (t == null) {
-                            p.edit().remove(K_URI).remove(K_NAME).apply();
-                            toast("上次的文件已无法访问，请重新选择");
-                            return;
-                        }
-                        push(t, name, Uri.parse(uriStr));
-                    }
-                });
-            }
-        }).start();
     }
 
     @Override
@@ -145,12 +98,6 @@ public class MainActivity extends Activity {
         if (requestCode != REQ_PICK || resultCode != RESULT_OK || data == null) return;
         final Uri uri = data.getData();
         if (uri == null) return;
-
-        try {
-            getContentResolver().takePersistableUriPermission(
-                    uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
-        } catch (Exception ignored) {
-        }
 
         final String name = displayName(uri);
         new Thread(new Runnable() {
@@ -169,10 +116,6 @@ public class MainActivity extends Activity {
                             toast("读取失败");
                             return;
                         }
-                        getSharedPreferences(PREFS, MODE_PRIVATE).edit()
-                                .putString(K_URI, uri.toString())
-                                .putString(K_NAME, name)
-                                .apply();
                         push(t, name, uri);
                     }
                 });

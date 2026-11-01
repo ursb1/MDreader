@@ -203,7 +203,7 @@ main{padding:0 0 140px}
 <div id="empty" hidden>
   <svg viewBox="0 0 24 24"><path d="M4 19h16a2 2 0 002-2v-7H4v7zM4 10V6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v2"/></svg>
   <div class="empty-title">未打开文件</div>
-  <div class="empty-sub">选择 .md 文件，下次打开会自动回到这里</div>
+  <div class="empty-sub">选择 .md 文件；再次打开同一文件时回到上次的位置</div>
   <button id="empty-open">打开文件</button>
 </div>
 <nav id="toc"><div class="toc-head">目录</div><ol id="toc-list"></ol></nav>
@@ -488,9 +488,6 @@ window.MDReader = {
   load: function(text, label, key){ loadWithOverlay(String(text), key || ('file:'+label), label); },
   empty: showEmpty
 };
-if(window.AndroidHost && window.AndroidHost.onReady){
-  try{ window.AndroidHost.onReady(); }catch(e){}
-}
 })();
 </script>
 </body>
